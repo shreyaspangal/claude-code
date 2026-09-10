@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { read_file } from "./tools/read_file";
+import type { ChatCompletionMessageParam } from "openai/resources";
 
 async function main() {
   const [, , flag, prompt] = process.argv;
@@ -19,9 +20,11 @@ async function main() {
     baseURL: baseURL,
   });
 
+  const messages = [{ role: "user", content: prompt }];
+
   const response = await client.chat.completions.create({
     model: "anthropic/claude-haiku-4.5",
-    messages: [{ role: "user", content: prompt }],
+    messages: messages as ChatCompletionMessageParam[],
     tools: [
       {
         "type": "function",
@@ -47,7 +50,17 @@ async function main() {
     throw new Error("no choices in response");
   }
 
+  messages.push({
+    role: "assistant",
+    content: response.choices[0].message.content ?? '',
+  });
+
   const toolCalls = response.choices[0].message?.tool_calls;
+
+  if (!toolCalls) {
+    console.log(response.choices[0].message.content);
+  }
+
   if (toolCalls && toolCalls.length > 0) {
     for (const toolCall of toolCalls) {
       if (toolCall.type === "function" && toolCall.function.name === "read") {
@@ -59,11 +72,14 @@ async function main() {
           throw new Error("no file_path in function call arguments");
         }
         const file_contents = read_file(file_path);
-        console.log(file_contents);
+        const result = {
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: file_contents
+        }
+        messages.push(result);
       }
     }
-  } else {
-    console.log(response.choices[0].message.content);
   }
 
   // You can use print statements as follows for debugging, they'll be visible when running tests.
