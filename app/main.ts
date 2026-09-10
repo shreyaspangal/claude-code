@@ -47,11 +47,27 @@ async function main() {
     throw new Error("no choices in response");
   }
 
+  const toolCalls = response.choices[0].message?.tool_calls;
+  if (toolCalls && toolCalls.length > 0) {
+    for (const toolCall of toolCalls) {
+      if (toolCall.function.name === "read") {
+        const file_path = toolCall.function.arguments?.file_path;
+        if (!file_path) {
+          throw new Error("no file_path in function call arguments");
+        }
+        const file_contents = read_file(file_path);
+        console.log(`File contents: ${file_contents}`);
+      }
+    }
+  } else {
+    console.log(response.choices[0].message.content);
+  }
+
   // You can use print statements as follows for debugging, they'll be visible when running tests.
-  console.error("Logs from your program will appear here!");
+  // console.error("Logs from your program will appear here!");
 
   // TODO: Uncomment the lines below to pass the first stage
-  console.log(response.choices[0].message.content);
+  // console.log(response.choices[0].message.content);
 }
 
 main();
