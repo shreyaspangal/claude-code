@@ -20,48 +20,50 @@ async function main() {
     baseURL: baseURL,
   });
 
-  const messages = [{ role: "user", content: prompt }];
+  const messages: ChatCompletionMessageParam[] = [{ role: "user", content: prompt }];
 
-  const response = await client.chat.completions.create({
-    model: "anthropic/claude-haiku-4.5",
-    messages: messages as ChatCompletionMessageParam[],
-    tools: [
-      {
-        "type": "function",
-        "function": {
-          "name": "read",
-          "description": "Read and return the contents of a file",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "file_path": {
-                "type": "string",
-                "description": "The path to the file to read"
-              }
-            },
-            "required": ["file_path"]
+  while (true) {
+    const response = await client.chat.completions.create({
+      model: "anthropic/claude-haiku-4.5",
+      messages: messages,
+      tools: [
+        {
+          "type": "function",
+          "function": {
+            "name": "read",
+            "description": "Read and return the contents of a file",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "file_path": {
+                  "type": "string",
+                  "description": "The path to the file to read"
+                }
+              },
+              "required": ["file_path"]
+            }
           }
         }
-      }
-    ]
-  });
+      ]
+    });
 
-  if (!response.choices || response.choices.length === 0) {
-    throw new Error("no choices in response");
-  }
+    if (!response.choices || response.choices.length === 0) {
+      throw new Error("no choices in response");
+    }
 
-  messages.push({
-    role: "assistant",
-    content: response.choices[0].message.content ?? '',
-  });
+    messages.push({
+      role: "assistant",
+      content: response.choices[0].message.content ?? '',
+      tool_calls: response.choices[0].message?.tool_calls ?? []
+    });
 
-  const toolCalls = response.choices[0].message?.tool_calls;
+    const toolCalls = response.choices[0].message?.tool_calls;
 
-  if (!toolCalls) {
-    console.log(response.choices[0].message.content);
-  }
+    if (!toolCalls || toolCalls.length === 0) {
+      console.log(response.choices[0].message.content);
+      break;
+    }
 
-  if (toolCalls && toolCalls.length > 0) {
     for (const toolCall of toolCalls) {
       if (toolCall.type === "function" && toolCall.function.name === "read") {
         const args = JSON.parse(toolCall.function.arguments) as {
@@ -72,21 +74,14 @@ async function main() {
           throw new Error("no file_path in function call arguments");
         }
         const file_contents = read_file(file_path);
-        const result = {
+        messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
           content: file_contents
-        }
-        messages.push(result);
+        });
       }
     }
   }
-
-  // You can use print statements as follows for debugging, they'll be visible when running tests.
-  // console.error("Logs from your program will appear here!");
-
-  // TODO: Uncomment the lines below to pass the first stage
-  // console.log(response.choices[0].message.content);
 }
 
 main();
