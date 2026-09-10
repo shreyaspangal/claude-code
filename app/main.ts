@@ -50,13 +50,16 @@ async function main() {
   const toolCalls = response.choices[0].message?.tool_calls;
   if (toolCalls && toolCalls.length > 0) {
     for (const toolCall of toolCalls) {
-      if (toolCall.function.name === "read") {
-        const file_path = toolCall.function.arguments?.file_path;
+      if (toolCall.type === "function" && toolCall.function.name === "read") {
+        const args = JSON.parse(toolCall.function.arguments) as {
+          file_path?: string;
+        };
+        const file_path = args.file_path;
         if (!file_path) {
           throw new Error("no file_path in function call arguments");
         }
         const file_contents = read_file(file_path);
-        console.log(`File contents: ${file_contents}`);
+        console.log(file_contents);
       }
     }
   } else {
