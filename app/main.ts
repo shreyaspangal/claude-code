@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { read_file } from "./tools/read_file";
 import type { ChatCompletionMessageParam } from "openai/resources";
+import { write_file } from "./tools/write_file";
 
 async function main() {
   const [, , flag, prompt] = process.argv;
@@ -43,6 +44,27 @@ async function main() {
               "required": ["file_path"]
             }
           }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "write",
+            "description": "Write content to a file",
+            "parameters": {
+              "type": "object",
+              "required": ["file_path", "content"],
+              "properties": {
+                "file_path": {
+                  "type": "string",
+                  "description": "The path of the file to write to"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "The content to write to the file"
+                }
+              }
+            }
+          }
         }
       ]
     });
@@ -78,6 +100,29 @@ async function main() {
           role: 'tool',
           tool_call_id: toolCall.id,
           content: file_contents
+        });
+      }
+
+      if (toolCall.type === "function" && toolCall.function.name === "write") {
+        const args = JSON.parse(toolCall.function.arguments) as {
+          file_path?: string;
+          content?: string;
+        };
+        const { file_path, content } = args;
+
+        if (!file_path) {
+          throw new Error("no file_path in function call arguments");
+        }
+        if (!content) {
+          throw new Error("no content in function call arguments");
+        }
+
+        write_file(file_path, content);
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: "File written successfully"
         });
       }
     }
