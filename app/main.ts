@@ -1,7 +1,6 @@
 import OpenAI from "openai";
-import { read_file } from "./tools/read_file";
+import { read_file, write_file, bash } from "./tools";
 import type { ChatCompletionMessageParam } from "openai/resources";
-import { write_file } from "./tools/write_file";
 
 async function main() {
   const [, , flag, prompt] = process.argv;
@@ -65,6 +64,23 @@ async function main() {
               }
             }
           }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "bash",
+            "description": "Execute a shell command",
+            "parameters": {
+              "type": "object",
+              "required": ["command"],
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "The command to execute"
+                }
+              }
+            }
+          }
         }
       ]
     });
@@ -123,6 +139,22 @@ async function main() {
           role: 'tool',
           tool_call_id: toolCall.id,
           content: "File written successfully"
+        });
+      }
+
+      if (toolCall.type === "function" && toolCall.function.name === "bash") {
+        const args = JSON.parse(toolCall.function.arguments) as {
+          command?: string;
+        };
+        const command = args.command;
+        if (!command) {
+          throw new Error("no command in function call arguments");
+        }
+        const bash_output = bash(command);
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: bash_output
         });
       }
     }
