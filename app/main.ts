@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { tools, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, ReadToolInput, WriteToolInput } from "./types";
+import { initializeSkills } from "./utils/skills";
 
 async function main() {
   const { client, prompt } = await createClient();
@@ -29,7 +30,10 @@ async function createClient(): Promise<ClientLoopParams> {
 }
 
 async function clientLoop({ client, prompt }: ClientLoopParams) {
-  const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: prompt }];
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: "system", content: await initializeSkills() },
+    { role: "user", content: prompt }
+  ];
 
   while (true) {
     const response = await client.chat.completions.create({
