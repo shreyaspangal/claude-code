@@ -5,8 +5,12 @@ import type { SkillFrontmatter } from "../types";
 async function extractFrontmatter(filePath: string) {
     const contents = await Bun.file(filePath).text();
     const frontmatter = contents.split("---")[1];
-    const { name, description } = (await Bun.YAML.parse(frontmatter) as SkillFrontmatter);
+    const { name, description } = (await yamlParser(frontmatter) as SkillFrontmatter);
     return `- ${name}: ${description}`;
+}
+
+async function yamlParser(text: string) {
+    return await Bun.YAML.parse(text);
 }
 
 async function initializeSkills(): Promise<string> {
@@ -26,4 +30,4 @@ async function initializeSkills(): Promise<string> {
     }
 }
 
-export { initializeSkills, extractFrontmatter };
+export { initializeSkills, extractFrontmatter, yamlParser };
