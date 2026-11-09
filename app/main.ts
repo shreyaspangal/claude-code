@@ -1,7 +1,13 @@
 import OpenAI from "openai";
 import { tools, read_file, write_file, bash } from "./tools";
+import type { BashToolInput, ClientLoopParams, ReadToolInput, WriteToolInput } from "./types";
 
 async function main() {
+  const { client, prompt } = await createClient();
+  await clientLoop({ client, prompt });
+}
+
+async function createClient(): Promise<ClientLoopParams> {
   const [, , flag, prompt] = process.argv;
   const apiKey = process.env.OPENROUTER_API_KEY;
   const baseURL =
@@ -19,6 +25,10 @@ async function main() {
     baseURL: baseURL,
   });
 
+  return { client, prompt };
+}
+
+async function clientLoop({ client, prompt }: ClientLoopParams) {
   const messages: OpenAI.ChatCompletionMessageParam[] = [{ role: "user", content: prompt }];
 
   while (true) {
@@ -32,42 +42,40 @@ async function main() {
       throw new Error("no choices in response");
     }
 
-    messages.push({
-      role: "assistant",
-      content: response.choices[0].message.content ?? '',
-      tool_calls: response.choices[0].message?.tool_calls ?? []
-    });
+    const { message } = response.choices[0];
 
-    const toolCalls = response.choices[0].message?.tool_calls;
+    messages.push(message);
 
-    if (!toolCalls || toolCalls.length === 0) {
-      console.log(response.choices[0].message.content);
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      console.log(message.content);
       break;
     }
 
-    for (const toolCall of toolCalls) {
-      if (toolCall.type === "function" && toolCall.function.name === "read") {
-        const args = JSON.parse(toolCall.function.arguments) as {
-          file_path?: string;
-        };
-        const file_path = args.file_path;
-        if (!file_path) {
+    for (const tool_call of message.tool_calls) {
+      const toolResponse = await executeTool(tool_call);
+      messages.push({
+        role: "tool",
+        tool_call_id: tool_call.id,
+        content: toolResponse,
+      } as OpenAI.ChatCompletionToolMessageParam);
+    }
+  }
+}
+
+async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
+  if (toolCall.type === "function") {
+    const { function: functionCall } = toolCall;
+    switch (functionCall.name) {
+      case "read":
+        const read_args = JSON.parse(functionCall.arguments) as ReadToolInput;
+        if (!read_args.file_path) {
           throw new Error("no file_path in function call arguments");
         }
-        const file_contents = read_file(file_path);
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: file_contents
-        });
-      }
-
-      if (toolCall.type === "function" && toolCall.function.name === "write") {
-        const args = JSON.parse(toolCall.function.arguments) as {
-          file_path?: string;
-          content?: string;
-        };
-        const { file_path, content } = args;
+        const file_contents = read_file(read_args.file_path);
+        return file_contents;
+      case "write":
+        const write_args = JSON.parse(toolCall.function.arguments) as WriteToolInput;
+        const { file_path, content } = write_args;
 
         if (!file_path) {
           throw new Error("no file_path in function call arguments");
@@ -78,28 +86,17 @@ async function main() {
 
         write_file(file_path, content);
 
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: "File written successfully"
-        });
-      }
-
-      if (toolCall.type === "function" && toolCall.function.name === "bash") {
-        const args = JSON.parse(toolCall.function.arguments) as {
-          command?: string;
-        };
-        const command = args.command;
+        return "File written successfully";
+      case "bash":
+        const bash_args = JSON.parse(toolCall.function.arguments) as BashToolInput;
+        const command = bash_args.command;
         if (!command) {
           throw new Error("no command in function call arguments");
         }
         const bash_output = bash(command);
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: bash_output
-        });
-      }
+        return bash_output;
+      default:
+        throw new Error("whoops what tool call");
     }
   }
 }
