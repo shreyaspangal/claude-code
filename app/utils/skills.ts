@@ -29,6 +29,7 @@ export async function initializeSkills(): Promise<string> {
             const skill = await readSkill(d.name);
             if (skill) lines.push(`- ${skill.meta.name}: ${skill.meta.description}`);
         }
+        lines.push(`\nIf a skill matches the user's request, call the Skill tool with its name and follow the instructions it returns.`);
         return lines.join("\n");
     } catch (_e) {
         return `No skills found!\n\nError: ${(_e as Error).message}`;
@@ -62,10 +63,22 @@ function skillHeader({ name, dir }: StackedSkill) {
     return `Skill: ${name} (located at ${dir})\nPaths in the instructions below are relative to that folder.`;
 }
 
+// Header + body with arguments filled in. Same text whether the user or the model invokes the skill.
+function renderSkill(skill: StackedSkill, stack: SkillStack) {
+    return `${skillHeader(skill)}\n\n${substituteArguments(skill.body, stack).trim()}`;
+}
+
 // A prompt becomes one user message per stacked skill, or itself if it has no skills.
 export async function expandPrompt(prompt: string): Promise<string[]> {
     const stack = await parseSkillStack(prompt);
     if (stack.skills.length === 0) return [prompt];
-    return stack.skills.map((skill) =>
-        `${skillHeader(skill)}\n\n${substituteArguments(skill.body, stack).trim()}`);
+    return stack.skills.map((skill) => renderSkill(skill, stack));
+}
+
+// The Skill tool: the model picked a skill by name. Returns null if there is no such skill.
+export async function loadSkill(name: string, args = ""): Promise<string | null> {
+    const skill = await readSkill(name);
+    if (!skill) return null;
+    const stacked = { name, dir: skill.dir, body: skill.body };
+    return renderSkill(stacked, { skills: [stacked], args, positional: args.split(/\s+/).filter(Boolean) });
 }

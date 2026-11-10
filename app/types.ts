@@ -10,6 +10,10 @@ export interface WriteToolInput {
 export interface BashToolInput {
     command: string;
 }
+export interface SkillToolInput {
+    name: string;
+    args?: string;
+}
 export interface SkillFrontmatter {
     name: string;
     description: string;

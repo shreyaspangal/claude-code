@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { tools, read_file, write_file, bash } from "./tools";
-import type { BashToolInput, ClientLoopParams, ReadToolInput, WriteToolInput } from "./types";
-import { expandPrompt, initializeSkills } from "./utils/skills";
+import type { BashToolInput, ClientLoopParams, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
+import { expandPrompt, initializeSkills, loadSkill } from "./utils/skills";
 
 async function main() {
   const { client, prompt } = await createClient();
@@ -100,6 +100,13 @@ async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
       const { command } = args as BashToolInput;
       if (!command) throw new Error("no command in function call arguments");
       return bash(command);
+    }
+    case "Skill": {
+      const { name: skillName, args: skillArgs } = args as SkillToolInput;
+      if (!skillName) throw new Error("no name in function call arguments");
+      const skill = await loadSkill(skillName, skillArgs);
+      if (!skill) throw new Error(`unknown skill: ${skillName}`);
+      return skill;
     }
     default:
       throw new Error(`unknown tool: ${name}`);
