@@ -92,7 +92,7 @@ async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
     case "write": {
       const { file_path, content } = args as WriteToolInput;
       if (!file_path) throw new Error("no file_path in function call arguments");
-      if (!content) throw new Error("no content in function call arguments");
+      if (content === undefined) throw new Error("no content in function call arguments"); // "" is a valid (empty) file
       write_file(file_path, content);
       return "File written successfully";
     }
