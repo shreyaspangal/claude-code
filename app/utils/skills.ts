@@ -14,15 +14,11 @@ async function readSkill(name: string) {
     if (!(await file.exists())) return null;
     const [, frontmatter, ...rest] = (await file.text()).split("---");
     if (frontmatter === undefined || rest.length === 0) return null;
-    const meta = (await yamlParser(frontmatter)) as SkillFrontmatter;
+    const meta = Bun.YAML.parse(frontmatter) as SkillFrontmatter;
     return { meta, body: rest.join("---") }; // rejoin so a "---" inside the body survives
 }
 
-async function yamlParser(text: string) {
-    return await Bun.YAML.parse(text);
-}
-
-async function initializeSkills(): Promise<string> {
+export async function initializeSkills(): Promise<string> {
     try {
         const dir = await opendir(SKILLS_DIR);
         const lines = ["You have access to the following skills:\n"];
@@ -64,5 +60,3 @@ export async function expandPrompt(prompt: string): Promise<string[]> {
     if (stack.bodies.length === 0) return [prompt];
     return stack.bodies.map((body) => substituteArguments(body, stack));
 }
-
-export { initializeSkills, yamlParser };

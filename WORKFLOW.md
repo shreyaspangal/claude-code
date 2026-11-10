@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (refactor: readSkill is the single SKILL.md reader)_
+_Last updated: 2026-11-11 (refactor: tidy skills.ts; public API is expandPrompt + initializeSkills)_
 
 ## Runtime sequence
 
@@ -60,7 +60,7 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] A missing index (`$2` with only 2 arguments) should stay as literal `$2`. Right now it becomes `""`.
 - [ ] `$ARGUMENTS[N]` as another way to write `$N`.
 - [ ] Shell-style quoting: `"hello world"` as one argument.
-- [ ] Named arguments from an `arguments:` frontmatter list. The types exist in `app/types.ts` but nothing uses them yet.
+- [ ] Named arguments from an `arguments:` frontmatter list.
 - [ ] `\$1` escape.
 - [x] ~~Skill files are split on `---`, so a body containing `---` gets cut off.~~ Fixed in `readSkill`.
 
@@ -68,5 +68,5 @@ Refactor queue (simplify without adding new ideas):
 
 - [x] 1. `expandPrompt` in `skills.ts`; `main.ts` only maps strings to user messages.
 - [x] 2. One `readSkill` helper plus a `SKILLS_DIR` constant, shared by `initializeSkills` and `parseSkillStack`. Fixes the `---` gap.
-- [ ] 3. Tidy `skills.ts`: drop `yamlParser`, use one export style, remove unused exports and the unused `Skill` type and `arguments` field.
+- [x] 3. Tidy `skills.ts`: drop `yamlParser`, use one export style, remove unused exports and the unused `Skill` type and `arguments` field.
 - [ ] 4. `executeTool`: parse tool arguments once before the `switch`.

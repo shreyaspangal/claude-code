@@ -13,12 +13,6 @@ export interface BashToolInput {
 export interface SkillFrontmatter {
     name: string;
     description: string;
-    arguments?: string | string[];
-}
-export interface Skill {
-    name: string;
-    body: string;
-    argumentNames: string[];
 }
 export interface ClientLoopParams {
     client: OpenAI;
