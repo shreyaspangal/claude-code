@@ -4,11 +4,18 @@ import type { SkillFrontmatter } from "../types";
 
 type SkillStack = { bodies: string[]; args: string; positional: string[] };
 
-async function extractFrontmatter(filePath: string) {
-    const contents = await Bun.file(filePath).text();
-    const frontmatter = contents.split("---")[1];
-    const { name, description } = (await yamlParser(frontmatter) as SkillFrontmatter);
-    return `- ${name}: ${description}`;
+const SKILLS_DIR = ".claude/skills";
+const MAX_STACKED_SKILLS = 6;
+
+// The one place that knows the SKILL.md format: "---\n<yaml>\n---\n<body>".
+// Returns null if the skill doesn't exist or has no frontmatter.
+async function readSkill(name: string) {
+    const file = Bun.file(path.resolve(SKILLS_DIR, name, "SKILL.md"));
+    if (!(await file.exists())) return null;
+    const [, frontmatter, ...rest] = (await file.text()).split("---");
+    if (frontmatter === undefined || rest.length === 0) return null;
+    const meta = (await yamlParser(frontmatter)) as SkillFrontmatter;
+    return { meta, body: rest.join("---") }; // rejoin so a "---" inside the body survives
 }
 
 async function yamlParser(text: string) {
@@ -17,30 +24,17 @@ async function yamlParser(text: string) {
 
 async function initializeSkills(): Promise<string> {
     try {
-        const dir = await opendir("./.claude/skills");
-        const frontmatters = ["You have access to the following skills:\n"];
+        const dir = await opendir(SKILLS_DIR);
+        const lines = ["You have access to the following skills:\n"];
         for await (const d of dir) {
-            frontmatters.push(
-                await extractFrontmatter(
-                    path.resolve(".claude/skills", d.name, "SKILL.md"),
-                ),
-            );
+            const skill = await readSkill(d.name);
+            if (skill) lines.push(`- ${skill.meta.name}: ${skill.meta.description}`);
         }
-        return frontmatters.join("\n");
+        return lines.join("\n");
     } catch (_e) {
         return `No skills found!\n\nError: ${(_e as Error).message}`;
     }
 }
-
-async function getSkillBody(skillName: string): Promise<string | null> {
-    const file = Bun.file(path.resolve(".claude/skills", skillName, "SKILL.md"));
-    if (!(await file.exists())) return null;
-    const contents = await file.text();
-    return contents.split("---")[2] ?? null;
-}
-
-// The first skill plus up to five more stacked after it.
-const MAX_STACKED_SKILLS = 6;
 
 // "/apple /grape mango pear" -> bodies of apple and grape, args "mango pear".
 // Stops at the first token that isn't a skill; it and everything after are the args.
@@ -51,9 +45,9 @@ async function parseSkillStack(prompt: string): Promise<SkillStack> {
     while (bodies.length < MAX_STACKED_SKILLS) {
         const token = rest.match(/^\/(\S+)(\s+|$)/);
         if (!token) break;
-        const body = await getSkillBody(token[1]);
-        if (body === null) break;
-        bodies.push(body);
+        const skill = await readSkill(token[1]);
+        if (!skill) break;
+        bodies.push(skill.body);
         rest = rest.slice(token[0].length);
     }
 
@@ -71,4 +65,4 @@ export async function expandPrompt(prompt: string): Promise<string[]> {
     return stack.bodies.map((body) => substituteArguments(body, stack));
 }
 
-export { initializeSkills, extractFrontmatter, yamlParser, getSkillBody };
+export { initializeSkills, yamlParser };

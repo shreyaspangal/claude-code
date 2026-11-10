@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (refactor: expandPrompt hides skill expansion from main.ts)_
+_Last updated: 2026-11-11 (refactor: readSkill is the single SKILL.md reader)_
 
 ## Runtime sequence
 
@@ -39,15 +39,15 @@ sequenceDiagram
 flowchart TD
     A[rest = prompt.trim] --> B{rest starts with /word<br/>and fewer than 6 skills?}
     B -- no --> E[args = rest, as typed]
-    B -- yes --> C{getSkillBody word<br/>is not null?}
+    B -- yes --> C{readSkill word<br/>is not null?}
     C -- no --> E
-    C -- yes --> D[push body, cut /word off rest] --> B
+    C -- yes --> D[push skill.body, cut /word off rest] --> B
     E --> F[each body + the same args → its own user message]
 ```
 
 ## Rules
 
-- A skill is `.claude/skills/<name>/SKILL.md`: frontmatter (`name`, `description`) between `---` lines, then the body.
+- A skill is `.claude/skills/<name>/SKILL.md`: frontmatter (`name`, `description`) between `---` lines, then the body. `readSkill` is the only code that reads this format. Both the skill list (`initializeSkills`) and stacking use it.
 - `$ARGUMENTS` becomes the full argument string. `$0`, `$1`, … become the arguments split on whitespace, counting from 0. Substitution happens in one pass, so inserted values are never expanded again.
 - Examples: `/apple /grape mango pear` gives 2 skills with args `mango pear`. `/apple /nope 1` gives 1 skill with args `/nope 1`. `hello /apple` gives no skills, so the raw prompt is sent.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
@@ -62,11 +62,11 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] Shell-style quoting: `"hello world"` as one argument.
 - [ ] Named arguments from an `arguments:` frontmatter list. The types exist in `app/types.ts` but nothing uses them yet.
 - [ ] `\$1` escape.
-- [ ] Skill files are split on `---`, so a body containing `---` gets cut off.
+- [x] ~~Skill files are split on `---`, so a body containing `---` gets cut off.~~ Fixed in `readSkill`.
 
 Refactor queue (simplify without adding new ideas):
 
 - [x] 1. `expandPrompt` in `skills.ts`; `main.ts` only maps strings to user messages.
-- [ ] 2. One `readSkill` helper plus a `SKILLS_DIR` constant, shared by `initializeSkills` and `parseSkillStack`. Fixes the `---` gap.
+- [x] 2. One `readSkill` helper plus a `SKILLS_DIR` constant, shared by `initializeSkills` and `parseSkillStack`. Fixes the `---` gap.
 - [ ] 3. Tidy `skills.ts`: drop `yamlParser`, use one export style, remove unused exports and the unused `Skill` type and `arguments` field.
 - [ ] 4. `executeTool`: parse tool arguments once before the `switch`.
