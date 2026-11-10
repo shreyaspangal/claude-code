@@ -43,7 +43,7 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
       : prompt;
   }
 
-  const modelId = process.env.MODEL_ID ?? 'nvidia/nemotron-3-ultra-550b-a55b:free';
+  const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: await initializeSkills() },
