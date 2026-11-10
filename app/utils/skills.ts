@@ -2,6 +2,8 @@ import { opendir } from "node:fs/promises";
 import path from "node:path";
 import type { SkillFrontmatter } from "../types";
 
+type SkillInvocation = { name: string; args: string; positional: string[] };
+
 async function extractFrontmatter(filePath: string) {
     const contents = await Bun.file(filePath).text();
     const frontmatter = contents.split("---")[1];
@@ -39,6 +41,17 @@ async function getSkillBody(skillName: string): Promise<string> {
     } catch (_e) {
         return `No skill body found for the given skill name: ${skillName}`;
     }
+}
+
+export function parseSkillInvocation(prompt: string): SkillInvocation | null {
+    if (!prompt.startsWith("/")) return null;
+    const [name, ...positional] = prompt.slice(1).trim().split(/\s+/);
+    if (!name) return null;
+    return { name, args: positional.join(" "), positional };
+}
+
+export function substituteArguments(body: string, { args, positional }: SkillInvocation) {
+  return body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, i) => i ? positional[+i] ?? "" : args);
 }
 
 export { initializeSkills, extractFrontmatter, yamlParser, getSkillBody };

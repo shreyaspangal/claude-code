@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { tools, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, ReadToolInput, WriteToolInput } from "./types";
-import { getSkillBody, initializeSkills } from "./utils/skills";
+import { getSkillBody, initializeSkills, parseSkillInvocation, substituteArguments } from "./utils/skills";
 
 async function main() {
   const { client, prompt } = await createClient();
@@ -30,18 +30,9 @@ async function createClient(): Promise<ClientLoopParams> {
 }
 
 async function clientLoop({ client, prompt }: ClientLoopParams) {
-  let userPrompt = prompt;
-  if (prompt.startsWith("/")) {
-    const name = prompt.slice(1).split(/\s/, 1)[0];
-    const args = prompt.slice(1 + name.length).trim();
-    const body = await getSkillBody(name);
-    const positional = args.split(/\s+/).filter(Boolean);
-    userPrompt = body
-      ? body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, index) =>
-        index === undefined ? args : positional[Number(index)] ?? ""
-      )
-      : prompt;
-  }
+  const skillInvocation = parseSkillInvocation(prompt);
+  const skillBody = skillInvocation && await getSkillBody(skillInvocation.name);
+  const userPrompt = skillBody ? substituteArguments(skillBody, skillInvocation!) : prompt;
 
   const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
 
