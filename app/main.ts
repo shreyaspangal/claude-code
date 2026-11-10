@@ -33,8 +33,17 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
   let userPrompt = prompt;
   if (prompt.startsWith("/")) {
     const name = prompt.slice(1).split(/\s/, 1)[0];
-    userPrompt = await getSkillBody(name) ?? prompt;
+    const args = prompt.slice(1 + name.length).trim();
+    const body = await getSkillBody(name);
+    const positional = args.split(/\s+/).filter(Boolean);
+    userPrompt = body
+      ? body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, index) =>
+        index === undefined ? args : positional[Number(index)] ?? ""
+      )
+      : prompt;
   }
+
+  const modelId = process.env.MODEL_ID ?? 'nvidia/nemotron-3-ultra-550b-a55b:free';
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: await initializeSkills() },
@@ -43,7 +52,7 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
 
   while (true) {
     const response = await client.chat.completions.create({
-      model: "anthropic/claude-haiku-4.5",
+      model: modelId,
       messages: messages,
       tools: tools as OpenAI.ChatCompletionTool[],
     });
