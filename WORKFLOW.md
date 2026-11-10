@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (skills with bundled scripts: each skill message starts with a folder header)_
+_Last updated: 2026-11-11 (tool errors go back to the model instead of crashing)_
 
 ## Runtime sequence
 
@@ -27,7 +27,7 @@ sequenceDiagram
         Model-->>Main: assistant message (+ tool_calls?)
         opt tool_calls
             Main->>Tools: executeTool: read / write / bash
-            Tools-->>Main: result, pushed as a "tool" message
+            Tools-->>Main: result (or "Error: <message>" if it threw), pushed as a "tool" message
         end
     end
     Main-->>User: print final message.content
@@ -51,6 +51,7 @@ flowchart TD
 - A skill folder can bundle files next to `SKILL.md` (e.g. `scripts/checksum.sh`). The body names them relative to the skill's folder. Each skill message starts with `Skill: <name> (located at .claude/skills/<name>)` and `Paths in the instructions below are relative to that folder.`, then a blank line and the body. The folder is project-relative, because the `bash` tool runs from the project root. The model joins folder and path and runs the script with `bash`; there is no special script-running code.
 - `$ARGUMENTS` becomes the full argument string. `$0`, `$1`, … become the arguments split on whitespace, counting from 0. Substitution happens in one pass, so inserted values are never expanded again.
 - Examples: `/apple /grape mango pear` gives 2 skills with args `mango pear`. `/apple /nope 1` gives 1 skill with args `/nope 1`. `hello /apple` gives no skills, so the raw prompt is sent.
+- A tool that throws (e.g. `read` on a directory) never crashes the program. `clientLoop` catches it and sends `Error: <message>` back as the tool result, so the model can recover.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
 
 ## Known gaps / next up

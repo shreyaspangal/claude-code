@@ -61,7 +61,13 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
     }
 
     for (const tool_call of message.tool_calls) {
-      const toolResponse = await executeTool(tool_call);
+      // A failing tool (e.g. reading a directory) goes back to the model as text instead of crashing.
+      let toolResponse;
+      try {
+        toolResponse = await executeTool(tool_call);
+      } catch (e) {
+        toolResponse = `Error: ${(e as Error).message}`;
+      }
       messages.push({
         role: "tool",
         tool_call_id: tool_call.id,
