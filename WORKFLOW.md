@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (refactor: tidy skills.ts; public API is expandPrompt + initializeSkills)_
+_Last updated: 2026-11-11 (refactor: executeTool parses tool arguments once)_
 
 ## Runtime sequence
 
@@ -69,4 +69,4 @@ Refactor queue (simplify without adding new ideas):
 - [x] 1. `expandPrompt` in `skills.ts`; `main.ts` only maps strings to user messages.
 - [x] 2. One `readSkill` helper plus a `SKILLS_DIR` constant, shared by `initializeSkills` and `parseSkillStack`. Fixes the `---` gap.
 - [x] 3. Tidy `skills.ts`: drop `yamlParser`, use one export style, remove unused exports and the unused `Skill` type and `arguments` field.
-- [ ] 4. `executeTool`: parse tool arguments once before the `switch`.
+- [x] 4. `executeTool`: parse tool arguments once before the `switch`.

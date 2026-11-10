@@ -72,41 +72,31 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
 }
 
 async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
-  if (toolCall.type === "function") {
-    const { function: functionCall } = toolCall;
-    switch (functionCall.name) {
-      case "read":
-        const read_args = JSON.parse(functionCall.arguments) as ReadToolInput;
-        if (!read_args.file_path) {
-          throw new Error("no file_path in function call arguments");
-        }
-        const file_contents = read_file(read_args.file_path);
-        return file_contents;
-      case "write":
-        const write_args = JSON.parse(toolCall.function.arguments) as WriteToolInput;
-        const { file_path, content } = write_args;
+  if (toolCall.type !== "function") return;
 
-        if (!file_path) {
-          throw new Error("no file_path in function call arguments");
-        }
-        if (!content) {
-          throw new Error("no content in function call arguments");
-        }
+  const { name, arguments: rawArgs } = toolCall.function;
+  const args = JSON.parse(rawArgs); // parsed once; each case picks its own fields
 
-        write_file(file_path, content);
-
-        return "File written successfully";
-      case "bash":
-        const bash_args = JSON.parse(toolCall.function.arguments) as BashToolInput;
-        const command = bash_args.command;
-        if (!command) {
-          throw new Error("no command in function call arguments");
-        }
-        const bash_output = bash(command);
-        return bash_output;
-      default:
-        throw new Error("whoops what tool call");
+  switch (name) {
+    case "read": {
+      const { file_path } = args as ReadToolInput;
+      if (!file_path) throw new Error("no file_path in function call arguments");
+      return read_file(file_path);
     }
+    case "write": {
+      const { file_path, content } = args as WriteToolInput;
+      if (!file_path) throw new Error("no file_path in function call arguments");
+      if (!content) throw new Error("no content in function call arguments");
+      write_file(file_path, content);
+      return "File written successfully";
+    }
+    case "bash": {
+      const { command } = args as BashToolInput;
+      if (!command) throw new Error("no command in function call arguments");
+      return bash(command);
+    }
+    default:
+      throw new Error(`unknown tool: ${name}`);
   }
 }
 
