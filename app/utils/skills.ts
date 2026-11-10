@@ -30,4 +30,15 @@ async function initializeSkills(): Promise<string> {
     }
 }
 
-export { initializeSkills, extractFrontmatter, yamlParser };
+async function getSkillBody(skillName: string): Promise<string> {
+    try {
+        const skillPath = path.resolve(".claude/skills", skillName, "SKILL.md");
+        const contents = await Bun.file(skillPath).text();
+        const body = contents.split("---")[2];
+        return body;
+    } catch (_e) {
+        return `No skill body found for the given skill name: ${skillName}`;
+    }
+}
+
+export { initializeSkills, extractFrontmatter, yamlParser, getSkillBody };
