@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-10 (skill stacking)_
+_Last updated: 2026-11-11 (refactor: expandPrompt hides skill expansion from main.ts)_
 
 ## Runtime sequence
 
@@ -16,9 +16,9 @@ sequenceDiagram
 
     User->>Main: ./your_program.sh -p "/apple /grape mango pear"
     Main->>Main: createClient() (needs OPENROUTER_API_KEY, -p)
-    Main->>Skills: parseSkillStack(prompt)
-    Skills-->>Main: { bodies: [apple, grape], args: "mango pear", positional }
-    Main->>Skills: substituteArguments(body, stack), once per body
+    Main->>Skills: expandPrompt(prompt)
+    Note over Skills: parseSkillStack → bodies [apple, grape], args "mango pear"<br/>substituteArguments(body, stack), once per body
+    Skills-->>Main: ["apple body", "grape body"] (no skills → [prompt])
     Main->>Skills: initializeSkills()
     Skills-->>Main: system prompt listing every skill's name and description
     Note over Main: messages = [system, user: apple body, user: grape body]<br/>(no skills → [system, user: raw prompt])
@@ -63,3 +63,10 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] Named arguments from an `arguments:` frontmatter list. The types exist in `app/types.ts` but nothing uses them yet.
 - [ ] `\$1` escape.
 - [ ] Skill files are split on `---`, so a body containing `---` gets cut off.
+
+Refactor queue (simplify without adding new ideas):
+
+- [x] 1. `expandPrompt` in `skills.ts`; `main.ts` only maps strings to user messages.
+- [ ] 2. One `readSkill` helper plus a `SKILLS_DIR` constant, shared by `initializeSkills` and `parseSkillStack`. Fixes the `---` gap.
+- [ ] 3. Tidy `skills.ts`: drop `yamlParser`, use one export style, remove unused exports and the unused `Skill` type and `arguments` field.
+- [ ] 4. `executeTool`: parse tool arguments once before the `switch`.

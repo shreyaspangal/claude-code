@@ -44,7 +44,7 @@ const MAX_STACKED_SKILLS = 6;
 
 // "/apple /grape mango pear" -> bodies of apple and grape, args "mango pear".
 // Stops at the first token that isn't a skill; it and everything after are the args.
-export async function parseSkillStack(prompt: string): Promise<SkillStack> {
+async function parseSkillStack(prompt: string): Promise<SkillStack> {
     const bodies: string[] = [];
     let rest = prompt.trim();
 
@@ -60,8 +60,15 @@ export async function parseSkillStack(prompt: string): Promise<SkillStack> {
     return { bodies, args: rest, positional: rest.split(/\s+/).filter(Boolean) };
 }
 
-export function substituteArguments(body: string, { args, positional }: SkillStack) {
+function substituteArguments(body: string, { args, positional }: SkillStack) {
     return body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, i) => i ? positional[+i] ?? "" : args);
+}
+
+// A prompt becomes one user message per stacked skill, or itself if it has no skills.
+export async function expandPrompt(prompt: string): Promise<string[]> {
+    const stack = await parseSkillStack(prompt);
+    if (stack.bodies.length === 0) return [prompt];
+    return stack.bodies.map((body) => substituteArguments(body, stack));
 }
 
 export { initializeSkills, extractFrontmatter, yamlParser, getSkillBody };

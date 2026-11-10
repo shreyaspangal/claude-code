@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { tools, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, ReadToolInput, WriteToolInput } from "./types";
-import { initializeSkills, parseSkillStack, substituteArguments } from "./utils/skills";
+import { expandPrompt, initializeSkills } from "./utils/skills";
 
 async function main() {
   const { client, prompt } = await createClient();
@@ -30,11 +30,8 @@ async function createClient(): Promise<ClientLoopParams> {
 }
 
 async function clientLoop({ client, prompt }: ClientLoopParams) {
-  // Each stacked skill becomes its own user message; all share the same arguments.
-  const stack = await parseSkillStack(prompt);
-  const userMessages: OpenAI.ChatCompletionUserMessageParam[] = stack.bodies.length
-    ? stack.bodies.map((body) => ({ role: "user", content: substituteArguments(body, stack) }))
-    : [{ role: "user", content: prompt }];
+  const userMessages = (await expandPrompt(prompt))
+    .map((content) => ({ role: "user" as const, content }));
 
   const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
 
