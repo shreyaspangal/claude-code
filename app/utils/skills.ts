@@ -2,7 +2,7 @@ import { opendir } from "node:fs/promises";
 import path from "node:path";
 import type { SkillFrontmatter } from "../types";
 
-type SkillInvocation = { name: string; args: string; positional: string[] };
+type SkillStack = { bodies: string[]; args: string; positional: string[] };
 
 async function extractFrontmatter(filePath: string) {
     const contents = await Bun.file(filePath).text();
@@ -28,30 +28,40 @@ async function initializeSkills(): Promise<string> {
         }
         return frontmatters.join("\n");
     } catch (_e) {
-        return "No skills for you";
+        return `No skills found!\n\nError: ${(_e as Error).message}`;
     }
 }
 
-async function getSkillBody(skillName: string): Promise<string> {
-    try {
-        const skillPath = path.resolve(".claude/skills", skillName, "SKILL.md");
-        const contents = await Bun.file(skillPath).text();
-        const body = contents.split("---")[2];
-        return body;
-    } catch (_e) {
-        return `No skill body found for the given skill name: ${skillName}`;
+async function getSkillBody(skillName: string): Promise<string | null> {
+    const file = Bun.file(path.resolve(".claude/skills", skillName, "SKILL.md"));
+    if (!(await file.exists())) return null;
+    const contents = await file.text();
+    return contents.split("---")[2] ?? null;
+}
+
+// The first skill plus up to five more stacked after it.
+const MAX_STACKED_SKILLS = 6;
+
+// "/apple /grape mango pear" -> bodies of apple and grape, args "mango pear".
+// Stops at the first token that isn't a skill; it and everything after are the args.
+export async function parseSkillStack(prompt: string): Promise<SkillStack> {
+    const bodies: string[] = [];
+    let rest = prompt.trim();
+
+    while (bodies.length < MAX_STACKED_SKILLS) {
+        const token = rest.match(/^\/(\S+)(\s+|$)/);
+        if (!token) break;
+        const body = await getSkillBody(token[1]);
+        if (body === null) break;
+        bodies.push(body);
+        rest = rest.slice(token[0].length);
     }
+
+    return { bodies, args: rest, positional: rest.split(/\s+/).filter(Boolean) };
 }
 
-export function parseSkillInvocation(prompt: string): SkillInvocation | null {
-    if (!prompt.startsWith("/")) return null;
-    const [name, ...positional] = prompt.slice(1).trim().split(/\s+/);
-    if (!name) return null;
-    return { name, args: positional.join(" "), positional };
-}
-
-export function substituteArguments(body: string, { args, positional }: SkillInvocation) {
-  return body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, i) => i ? positional[+i] ?? "" : args);
+export function substituteArguments(body: string, { args, positional }: SkillStack) {
+    return body.replace(/\$ARGUMENTS|\$(\d+)/g, (_, i) => i ? positional[+i] ?? "" : args);
 }
 
 export { initializeSkills, extractFrontmatter, yamlParser, getSkillBody };
