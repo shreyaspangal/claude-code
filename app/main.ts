@@ -33,12 +33,18 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
   const userMessages = (await expandPrompt(prompt))
     .map((content) => ({ role: "user" as const, content }));
 
-  const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
-
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: await initializeSkills() },
     ...userMessages,
   ];
+
+  console.log(await runAgent(client, messages));
+}
+
+// The agent loop: ask the model, run any tools it calls, repeat until it answers without tools.
+// Returns that final answer. Used for the main conversation and, later, for subagents.
+async function runAgent(client: OpenAI, messages: OpenAI.ChatCompletionMessageParam[]): Promise<string> {
+  const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
 
   while (true) {
     const response = await client.chat.completions.create({
@@ -56,15 +62,14 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
     messages.push(message);
 
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      console.log(message.content);
-      break;
+      return message.content ?? "";
     }
 
     for (const tool_call of message.tool_calls) {
       // A failing tool (e.g. reading a directory) goes back to the model as text instead of crashing.
       let toolResponse;
       try {
-        toolResponse = await executeTool(tool_call);
+        toolResponse = await executeTool(client, tool_call);
       } catch (e) {
         toolResponse = `Error: ${(e as Error).message}`;
       }
@@ -77,7 +82,7 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
   }
 }
 
-async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
+async function executeTool(client: OpenAI, toolCall: OpenAI.ChatCompletionMessageToolCall) {
   if (toolCall.type !== "function") return;
 
   const { name, arguments: rawArgs } = toolCall.function;
@@ -106,7 +111,10 @@ async function executeTool(toolCall: OpenAI.ChatCompletionMessageToolCall) {
       if (!skillName) throw new Error("no name in function call arguments");
       const skill = await loadSkill(skillName, skillArgs);
       if (!skill) throw new Error(`unknown skill: ${skillName}`);
-      return skill;
+      if (!skill.fork) return skill.text;
+      // context: fork — a subagent: the same loop over a fresh conversation holding only the skill.
+      const answer = await runAgent(client, [{ role: "user", content: skill.text }]);
+      return `Skill ${skillName} ran in a separate context and returned: ${answer}`;
     }
     default:
       throw new Error(`unknown tool: ${name}`);

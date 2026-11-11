@@ -46,7 +46,7 @@ async function parseSkillStack(prompt: string): Promise<SkillStack> {
         const token = rest.match(/^\/(\S+)(\s+|$)/);
         if (!token) break;
         const skill = await readSkill(token[1]);
-        if (!skill) break;
+        if (!skill || skill.meta.context === "fork") break; // a forked skill ends the run and stays in the args
         skills.push({ name: token[1], dir: skill.dir, body: skill.body });
         rest = rest.slice(token[0].length);
     }
@@ -76,9 +76,11 @@ export async function expandPrompt(prompt: string): Promise<string[]> {
 }
 
 // The Skill tool: the model picked a skill by name. Returns null if there is no such skill.
-export async function loadSkill(name: string, args = ""): Promise<string | null> {
+// fork is true when the skill asks to run in a subagent (context: fork).
+export async function loadSkill(name: string, args = ""): Promise<{ text: string; fork: boolean } | null> {
     const skill = await readSkill(name);
     if (!skill) return null;
     const stacked = { name, dir: skill.dir, body: skill.body };
-    return renderSkill(stacked, { skills: [stacked], args, positional: args.split(/\s+/).filter(Boolean) });
+    const text = renderSkill(stacked, { skills: [stacked], args, positional: args.split(/\s+/).filter(Boolean) });
+    return { text, fork: skill.meta.context === "fork" };
 }

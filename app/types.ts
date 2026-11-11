@@ -17,6 +17,7 @@ export interface SkillToolInput {
 export interface SkillFrontmatter {
     name: string;
     description: string;
+    context?: string; // "fork" = run the skill in a subagent
 }
 export interface ClientLoopParams {
     client: OpenAI;

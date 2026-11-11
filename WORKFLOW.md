@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (Skill tool: the model can load a skill it picked from the list)_
+_Last updated: 2026-11-11 (context: fork skills run in a subagent via runAgent)_
 
 ## Runtime sequence
 
@@ -22,16 +22,21 @@ sequenceDiagram
     Main->>Skills: initializeSkills()
     Skills-->>Main: system prompt listing every skill's name and description,<br/>plus "call the Skill tool if a skill matches"
     Note over Main: messages = [system, user: apple header + body, user: grape header + body]<br/>(no skills → [system, user: raw prompt])
+    Note over Main: runAgent(client, messages): the agent loop, returns the final answer
     loop until the reply has no tool calls
         Main->>Model: chat.completions(MODEL_ID, messages, tools)
         Model-->>Main: assistant message (+ tool_calls?)
         opt tool_calls
             Main->>Tools: executeTool: read / write / bash
-            Main->>Skills: executeTool: Skill {name, args?} → loadSkill (same renderSkill text as /name)
+            Main->>Skills: executeTool: Skill {name, args?} → loadSkill → {text, fork}
+            opt fork (context: fork)
+                Main->>Main: runAgent(client, [user: text]) — subagent, fresh conversation
+                Note over Main: result = "Skill <name> ran in a separate context and returned: <answer>"
+            end
             Note over Main: result (or "Error: <message>" if it threw), pushed as a "tool" message
         end
     end
-    Main-->>User: print final message.content
+    Main-->>User: print runAgent's answer
 ```
 
 ## Skill stacking (`parseSkillStack`)
@@ -40,7 +45,7 @@ sequenceDiagram
 flowchart TD
     A[rest = prompt.trim] --> B{rest starts with /word<br/>and fewer than 6 skills?}
     B -- no --> E[args = rest, as typed]
-    B -- yes --> C{readSkill word<br/>is not null?}
+    B -- yes --> C{readSkill word is not null<br/>and not context: fork?}
     C -- no --> E
     C -- yes --> D[push name, dir, body; cut /word off rest] --> B
     E --> F[each skill: header + body with the same args → its own user message]
@@ -55,6 +60,8 @@ flowchart TD
 - A skill reaches the model in two ways, with the same text (`renderSkill`: header + body with args filled in):
   - The user names it: `/name` at the start of the prompt, expanded before the first request (`expandPrompt`).
   - The model picks it: the system prompt lists every skill and says to call the `Skill` tool when one matches. `Skill {name, args?}` returns the skill via `loadSkill`. An unknown name is an error the model sees. Only the chosen skill's body is loaded, never the others.
+- A skill with `context: fork` runs in a subagent. When the model calls `Skill` on it, the handler runs `runAgent` again over a new conversation holding only the skill's text (header + body, args filled in). That conversation has no system prompt and doesn't include the user's question. Only the subagent's final answer comes back, as `Skill <name> ran in a separate context and returned: <answer>`. The subagent has the same tools as the main loop.
+- A fork skill ends a stacking run: `/apple /fig 1` (fig forks) expands only apple, with args `/fig 1`. `/fig` alone expands nothing, so the raw prompt is sent and the model can still call `Skill`.
 - A tool that throws (e.g. `read` on a directory) never crashes the program. `clientLoop` catches it and sends `Error: <message>` back as the tool result, so the model can recover.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
 
@@ -74,6 +81,8 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] `references/` and `assets/` (named the same way as `scripts/`, but not tested in this stage).
 - [x] ~~The model can't load a skill it picks from the list.~~ Fixed with the `Skill` tool.
 - [ ] The model may call `Skill` for a skill already expanded from `/name` (seen in #SK5). Harmless, costs one extra round trip.
+- [ ] `/name` on a fork skill should run the subagent directly, like Claude Code. Now it falls through to the raw prompt.
+- [ ] The `agent` frontmatter field (subagent type). Out of scope for this stage.
 - [ ] Tool registry: keep each tool's schema and handler together, so a new tool (e.g. a sub-agent `Task`) is one file instead of edits in `tools/index.ts`, `main.ts` and `types.ts`.
 
 Refactor queue (simplify without adding new ideas):
