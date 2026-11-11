@@ -75,4 +75,37 @@ const tools = [
     }
 ]
 
-export { tools, read_file, write_file, bash };
+// Advertised only when the LSP client connects (see main.ts), so it is kept out of `tools`.
+const lspTool = {
+    "type": "function",
+    "function": {
+        "name": "LSP",
+        "description": "Returns the file, line, and character where a symbol is defined. Point at the symbol's position, not its name; line and character both count from 1, as in an editor.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["goToDefinition"]
+                },
+                "filePath": {
+                    "type": "string",
+                    "description": "Absolute path, or a path relative to the agent's current working directory."
+                },
+                "line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "1-based line number of the symbol."
+                },
+                "character": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "1-based character offset in UTF-16 code units (same as character count for ASCII)."
+                }
+            },
+            "required": ["operation", "filePath", "line", "character"]
+        }
+    }
+}
+
+export { tools, lspTool, read_file, write_file, bash };

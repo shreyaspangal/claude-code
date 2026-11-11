@@ -14,6 +14,12 @@ export interface SkillToolInput {
     name: string;
     args?: string;
 }
+export interface LSPToolInput {
+    operation: "goToDefinition";
+    filePath: string;
+    line: number; // 1-based
+    character: number; // 1-based, UTF-16 code units
+}
 export interface SkillFrontmatter {
     name: string;
     description: string;

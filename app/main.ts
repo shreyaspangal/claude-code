@@ -1,10 +1,17 @@
 import OpenAI from "openai";
-import { tools, read_file, write_file, bash } from "./tools";
-import type { BashToolInput, ClientLoopParams, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
+import { tools, lspTool, read_file, write_file, bash } from "./tools";
+import type { BashToolInput, ClientLoopParams, LSPToolInput, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
 import { expandPrompt, initializeSkills, loadSkill } from "./utils/skills";
+import { LSPClient } from "./lsp_client";
+
+// Set once in main() before the first model request; null when CODECRAFTERS_LSP_URL is unset.
+// Kept for the whole run so the LSP tool handler can reach the server.
+let lspClient: LSPClient | null = null;
 
 async function main() {
   const { client, prompt } = await createClient();
+  lspClient = await LSPClient.fromEnvironment();
+  if (lspClient) console.error("LSP client connected"); // stderr: stdout is only the model's answer
   await clientLoop({ client, prompt });
 }
 
@@ -45,12 +52,13 @@ async function clientLoop({ client, prompt }: ClientLoopParams) {
 // Returns that final answer. Used for the main conversation and, later, for subagents.
 async function runAgent(client: OpenAI, messages: OpenAI.ChatCompletionMessageParam[]): Promise<string> {
   const modelId = process.env.MODEL_ID ?? 'anthropic/claude-haiku-4.5';
+  const activeTools = lspClient ? [...tools, lspTool] : tools;
 
   while (true) {
     const response = await client.chat.completions.create({
       model: modelId,
       messages: messages,
-      tools: tools as OpenAI.ChatCompletionTool[],
+      tools: activeTools as OpenAI.ChatCompletionTool[],
     });
 
     if (!response.choices || response.choices.length === 0) {
@@ -115,6 +123,12 @@ async function executeTool(client: OpenAI, toolCall: OpenAI.ChatCompletionMessag
       // context: fork — a subagent: the same loop over a fresh conversation holding only the skill.
       const answer = await runAgent(client, [{ role: "user", content: skill.text }]);
       return `Skill ${skillName} ran in a separate context and returned: ${answer}`;
+    }
+    case "LSP": {
+      if (!lspClient) throw new Error("LSP is not configured");
+      const { operation } = args as LSPToolInput;
+      if (operation !== "goToDefinition") throw new Error(`unsupported LSP operation: ${operation}`);
+      return "LSP is not implemented yet"; // placeholder: definition lookup comes next stage
     }
     default:
       throw new Error(`unknown tool: ${name}`);
