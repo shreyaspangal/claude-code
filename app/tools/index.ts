@@ -80,13 +80,14 @@ const lspTool = {
     "type": "function",
     "function": {
         "name": "LSP",
-        "description": "Returns the file, line, and character where a symbol is defined. Point at the symbol's position, not its name; line and character both count from 1, as in an editor.",
+        "description": "Code intelligence from a language server. goToDefinition returns the file, line, and character where a symbol is defined. findReferences returns every location that uses the symbol, including its declaration and aliased imports, so you can see which callers a change would affect. Point at the symbol's position, not its name; line and character both count from 1, as in an editor.",
         "parameters": {
             "type": "object",
             "properties": {
                 "operation": {
                     "type": "string",
-                    "enum": ["goToDefinition"]
+                    "enum": ["goToDefinition", "findReferences"],
+                    "description": "goToDefinition: where the symbol is defined. findReferences: everywhere the symbol is used, including its declaration."
                 },
                 "filePath": {
                     "type": "string",

@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-12 (LSP goToDefinition: didOpen once per file, then textDocument/definition)_
+_Last updated: 2026-11-12 (LSP findReferences: textDocument/references, results grouped by file)_
 
 ## Runtime sequence
 
@@ -37,9 +37,13 @@ sequenceDiagram
                 Main->>Main: runAgent(client, [user: text]) — subagent, fresh conversation
                 Note over Main: result = "Skill <name> ran in a separate context and returned: <answer>"
             end
-            Main->>LSP: executeTool: LSP {operation, filePath, line, character} → goToDefinition (app/tools/lsp.ts)
-            Note over Main,LSP: first lookup of a file: notify textDocument/didOpen {uri, languageId, version 1, text}<br/>then request textDocument/definition at (line-1, character-1)
-            LSP-->>Main: Location {uri, range} → "Defined in <relative path>:<line+1>:<char+1>"
+            Main->>LSP: executeTool: LSP {operation, filePath, line, character} → goToDefinition / findReferences (app/tools/lsp.ts)
+            Note over Main,LSP: prepare: first lookup of a file → notify textDocument/didOpen {uri, languageId, version 1, text}<br/>then request at (line-1, character-1)
+            alt goToDefinition
+                LSP-->>Main: textDocument/definition → Location → "Defined in <relative path>:<line+1>:<char+1>"
+            else findReferences (includeDeclaration: true)
+                LSP-->>Main: textDocument/references → Location[] → "Found N references across M files:" grouped by file, or "No references found"
+            end
             Note over Main: result (or "Error: <message>" if it threw), pushed as a "tool" message
         end
     end
@@ -70,7 +74,9 @@ flowchart TD
 - A skill with `context: fork` runs in a subagent. When the model calls `Skill` on it, the handler runs `runAgent` again over a new conversation holding only the skill's text (header + body, args filled in). That conversation has no system prompt and doesn't include the user's question. Only the subagent's final answer comes back, as `Skill <name> ran in a separate context and returned: <answer>`. The subagent has the same tools as the main loop.
 - A fork skill ends a stacking run: `/apple /fig 1` (fig forks) expands only apple, with args `/fig 1`. `/fig` alone expands nothing, so the raw prompt is sent and the model can still call `Skill`.
 - A tool that throws (e.g. `read` on a directory) never crashes the program. `clientLoop` catches it and sends `Error: <message>` back as the tool result, so the model can recover.
-- LSP: `main()` calls `LSPClient.fromEnvironment()` before the first model request. It returns `null` unless `CODECRAFTERS_LSP_URL` is set. When connected, it logs `LSP client connected` to stderr (stdout is only the answer) and every request, subagents included, advertises the `LSP` tool (`goToDefinition`; `line`/`character` 1-based). `goToDefinition` (`app/tools/lsp.ts`) resolves `filePath` against the working directory into a percent-encoded `file://` URI, sends `textDocument/didOpen` (languageId from `extensionToLanguage[ext]`, version 1, full text) the first time that URI is used, then requests `textDocument/definition` with 0-based positions. Opened URIs are kept in a set for the run. The server rejects a second `didOpen`, and a URI goes into the set only after `notify` succeeds. The reply's start position comes back as `Defined in <path relative to cwd>:<line>:<char>` (1-based). Unconfigured, the tool isn't offered and nothing else changes.
+- LSP: `main()` calls `LSPClient.fromEnvironment()` before the first model request. It returns `null` unless `CODECRAFTERS_LSP_URL` is set. When connected, it logs `LSP client connected` to stderr (stdout is only the answer) and every request, subagents included, advertises the `LSP` tool (`goToDefinition`, `findReferences`; `line`/`character` 1-based). Both operations go through `prepare` (`app/tools/lsp.ts`), which resolves `filePath` against the working directory into a percent-encoded `file://` URI, sends `textDocument/didOpen` (languageId from `extensionToLanguage[ext]`, version 1, full text) the first time that URI is used, and converts the position to 0-based. Opened URIs are kept in a set for the run. The server rejects a second `didOpen`, and a URI goes into the set only after `notify` succeeds. Results always use paths relative to the working directory and 1-based start positions:
+  - `goToDefinition` → `textDocument/definition` → `Defined in <path>:<line>:<char>`.
+  - `findReferences` → `textDocument/references` with `context.includeDeclaration: true` → `Found N references across M files:`, then one block per file (in server order) with a `  Line <line>:<char>` row per location. Two hits on one line stay separate rows. `[]` or `null` → `No references found`. Unconfigured, the tool isn't offered and nothing else changes.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
 
 ## Known gaps / next up
@@ -93,7 +99,9 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] The `agent` frontmatter field (subagent type). Out of scope for this stage.
 - [ ] Tool registry: keep each tool's schema and handler together, so a new tool (e.g. a sub-agent `Task`) is one file instead of edits in `tools/index.ts`, `main.ts` and `types.ts`. (LSP was the fifth tool added this way.)
 - [x] ~~LSP `goToDefinition` handler~~ Done in `app/tools/lsp.ts`.
-- [ ] LSP: several locations (`Location[]`), `LocationLink`, `null` results, and server errors aren't handled. Only a single `Location` is.
+- [x] ~~LSP `findReferences`~~ Done in `app/tools/lsp.ts`, sharing `prepare` with `goToDefinition`.
+- [ ] LSP `goToDefinition`: several locations (`Location[]`), `LocationLink`, and `null` results aren't handled. Only a single `Location` is.
+- [ ] LSP: "Found 1 references across 1 files" isn't pluralized correctly. Cosmetic.
 - [ ] LSP: edited files are never re-synced (`didChange`). The server keeps the text from the first `didOpen`.
 
 Refactor queue (simplify without adding new ideas):

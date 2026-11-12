@@ -3,7 +3,7 @@ import { tools, lspTool, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, LSPToolInput, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
 import { expandPrompt, initializeSkills, loadSkill } from "./utils/skills";
 import { LSPClient } from "./lsp_client";
-import { goToDefinition } from "./tools/lsp";
+import { goToDefinition, findReferences } from "./tools/lsp";
 
 // Set once in main() before the first model request; null when CODECRAFTERS_LSP_URL is unset.
 // Kept for the whole run so the LSP tool handler can reach the server.
@@ -128,8 +128,9 @@ async function executeTool(client: OpenAI, toolCall: OpenAI.ChatCompletionMessag
     case "LSP": {
       if (!lspClient) throw new Error("LSP is not configured");
       const input = args as LSPToolInput;
-      if (input.operation !== "goToDefinition") throw new Error(`unsupported LSP operation: ${input.operation}`);
-      return goToDefinition(lspClient, input);
+      if (input.operation === "goToDefinition") return goToDefinition(lspClient, input);
+      if (input.operation === "findReferences") return findReferences(lspClient, input);
+      throw new Error(`unsupported LSP operation: ${input.operation}`);
     }
     default:
       throw new Error(`unknown tool: ${name}`);
