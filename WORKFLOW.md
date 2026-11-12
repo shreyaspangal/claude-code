@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-11 (LSP client connects at startup; LSP tool advertised with a placeholder result)_
+_Last updated: 2026-11-12 (LSP goToDefinition: didOpen once per file, then textDocument/definition)_
 
 ## Runtime sequence
 
@@ -37,7 +37,9 @@ sequenceDiagram
                 Main->>Main: runAgent(client, [user: text]) — subagent, fresh conversation
                 Note over Main: result = "Skill <name> ran in a separate context and returned: <answer>"
             end
-            Main->>Main: executeTool: LSP {operation, filePath, line, character} → "LSP is not implemented yet"
+            Main->>LSP: executeTool: LSP {operation, filePath, line, character} → goToDefinition (app/tools/lsp.ts)
+            Note over Main,LSP: first lookup of a file: notify textDocument/didOpen {uri, languageId, version 1, text}<br/>then request textDocument/definition at (line-1, character-1)
+            LSP-->>Main: Location {uri, range} → "Defined in <relative path>:<line+1>:<char+1>"
             Note over Main: result (or "Error: <message>" if it threw), pushed as a "tool" message
         end
     end
@@ -68,7 +70,7 @@ flowchart TD
 - A skill with `context: fork` runs in a subagent. When the model calls `Skill` on it, the handler runs `runAgent` again over a new conversation holding only the skill's text (header + body, args filled in). That conversation has no system prompt and doesn't include the user's question. Only the subagent's final answer comes back, as `Skill <name> ran in a separate context and returned: <answer>`. The subagent has the same tools as the main loop.
 - A fork skill ends a stacking run: `/apple /fig 1` (fig forks) expands only apple, with args `/fig 1`. `/fig` alone expands nothing, so the raw prompt is sent and the model can still call `Skill`.
 - A tool that throws (e.g. `read` on a directory) never crashes the program. `clientLoop` catches it and sends `Error: <message>` back as the tool result, so the model can recover.
-- LSP: `main()` calls `LSPClient.fromEnvironment()` before the first model request. It returns `null` unless `CODECRAFTERS_LSP_URL` is set. When connected, it logs `LSP client connected` to stderr (stdout is only the answer) and every request, subagents included, advertises the `LSP` tool (`goToDefinition`; `line`/`character` 1-based). For now the handler returns the placeholder `LSP is not implemented yet`. Unconfigured, the tool isn't offered and nothing else changes.
+- LSP: `main()` calls `LSPClient.fromEnvironment()` before the first model request. It returns `null` unless `CODECRAFTERS_LSP_URL` is set. When connected, it logs `LSP client connected` to stderr (stdout is only the answer) and every request, subagents included, advertises the `LSP` tool (`goToDefinition`; `line`/`character` 1-based). `goToDefinition` (`app/tools/lsp.ts`) resolves `filePath` against the working directory into a percent-encoded `file://` URI, sends `textDocument/didOpen` (languageId from `extensionToLanguage[ext]`, version 1, full text) the first time that URI is used, then requests `textDocument/definition` with 0-based positions. Opened URIs are kept in a set for the run. The server rejects a second `didOpen`, and a URI goes into the set only after `notify` succeeds. The reply's start position comes back as `Defined in <path relative to cwd>:<line>:<char>` (1-based). Unconfigured, the tool isn't offered and nothing else changes.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
 
 ## Known gaps / next up
@@ -86,11 +88,13 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [ ] `${CLAUDE_SKILL_DIR}` substitution in the body, like Claude Code.
 - [ ] `references/` and `assets/` (named the same way as `scripts/`, but not tested in this stage).
 - [x] ~~The model can't load a skill it picks from the list.~~ Fixed with the `Skill` tool.
-- [ ] The model may call `Skill` for a skill already expanded from `/name` (seen in #SK5). Harmless, costs one extra round trip.
+- [ ] The model may call `Skill` for a skill already expanded from `/name` (seen in #SK5). Not harmless: if it calls `Skill` without `args`, `$ARGUMENTS` comes back empty and the model may echo that (#SK5 failed once this way, then passed on rerun).
 - [ ] `/name` on a fork skill should run the subagent directly, like Claude Code. Now it falls through to the raw prompt.
 - [ ] The `agent` frontmatter field (subagent type). Out of scope for this stage.
 - [ ] Tool registry: keep each tool's schema and handler together, so a new tool (e.g. a sub-agent `Task`) is one file instead of edits in `tools/index.ts`, `main.ts` and `types.ts`. (LSP was the fifth tool added this way.)
-- [ ] LSP `goToDefinition` handler: open the document on the server, convert 1-based positions to LSP's 0-based ones, and return file/line/character (next stage).
+- [x] ~~LSP `goToDefinition` handler~~ Done in `app/tools/lsp.ts`.
+- [ ] LSP: several locations (`Location[]`), `LocationLink`, `null` results, and server errors aren't handled. Only a single `Location` is.
+- [ ] LSP: edited files are never re-synced (`didChange`). The server keeps the text from the first `didOpen`.
 
 Refactor queue (simplify without adding new ideas):
 
