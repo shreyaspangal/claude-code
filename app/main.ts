@@ -3,7 +3,7 @@ import { tools, lspTool, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, LSPToolInput, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
 import { expandPrompt, initializeSkills, loadSkill } from "./utils/skills";
 import { LSPClient } from "./lsp_client";
-import { goToDefinition, findReferences, syncWrite } from "./tools/lsp";
+import { goToDefinition, findReferences, syncWrite, collectDiagnostics } from "./tools/lsp";
 
 // Set once in main() before the first model request; null when CODECRAFTERS_LSP_URL is unset.
 // Kept for the whole run so the LSP tool handler can reach the server.
@@ -87,6 +87,16 @@ async function runAgent(client: OpenAI, messages: OpenAI.ChatCompletionMessagePa
         tool_call_id: tool_call.id,
         content: toolResponse,
       } as OpenAI.ChatCompletionToolMessageParam);
+    }
+
+    // Before the next request: new diagnostics (from any file) ride along on the latest tool result.
+    // Write's own result is unchanged; reports arrive asynchronously, so they're read here, awaited.
+    if (lspClient) {
+      const diagnostics = await collectDiagnostics(lspClient);
+      if (diagnostics) {
+        const last = messages[messages.length - 1] as OpenAI.ChatCompletionToolMessageParam;
+        last.content = `${last.content}\n\n${diagnostics}`;
+      }
     }
   }
 }

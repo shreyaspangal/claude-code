@@ -71,6 +71,58 @@ export async function syncWrite(client: LSPClient, filePath: string, text: strin
     }
 }
 
+// One issue from a textDocument/publishDiagnostics report (0-based range, like navigation).
+interface Diagnostic {
+    range: { start: Position; end: Position };
+    message: string;
+}
+
+interface Notification {
+    method: string;
+    params: { uri: string; version?: number | null; diagnostics: Diagnostic[] };
+}
+
+// The client queues server notifications; `cursor` marks how many we've read.
+// Every response's cursor is used for the next read, even when the batch has nothing for us.
+let cursor = 0;
+
+// Per URI, the issues (as "line:char message" with 1-based coordinates) from the last
+// current report. A newer report replaces the set; an empty report clears it.
+const shown = new Map<string, Set<string>>();
+
+// Read newly queued diagnostics and return only issues the model hasn't seen yet,
+// formatted for a tool result, or null when there's nothing new.
+export async function collectDiagnostics(client: LSPClient): Promise<string | null> {
+    const batch = (await client.notifications(cursor, 0)) as { cursor: number; notifications: Notification[] };
+    cursor = batch.cursor;
+
+    // Keep the latest current report per file. A report is current when it has no
+    // version, or its version is the last one we sent for that file. Older ones are stale.
+    const latest = new Map<string, Diagnostic[]>();
+    for (const { method, params } of batch.notifications) {
+        if (method !== "textDocument/publishDiagnostics") continue;
+        if (params.version != null && params.version !== versions.get(params.uri)) continue;
+        latest.set(params.uri, params.diagnostics);
+    }
+
+    // Diff each file's new report against what was last shown, then replace it.
+    const byFile = new Map<string, string[]>();
+    for (const [uri, diagnostics] of latest) {
+        const previous = shown.get(uri) ?? new Set<string>();
+        const current = new Set(diagnostics.map(({ range, message }) =>
+            `[Line ${range.start.line + 1}:${range.start.character + 1}] ${message}`));
+        const fresh = [...current].filter((issue) => !previous.has(issue));
+        if (fresh.length > 0) byFile.set(toRelativePath(uri), fresh);
+        shown.set(uri, current);
+    }
+    if (byFile.size === 0) return null;
+
+    const sections = [...byFile].map(([file, issues]) => `${file}:\n${issues.map((i) => `  ${i}`).join("\n")}`);
+    return "<new-diagnostics>The following new diagnostic issues were detected by the language server. " +
+        "They may come from your recent edits, including in files you didn't edit; fix them before finishing.\n\n" +
+        `${sections.join("\n\n")}</new-diagnostics>`;
+}
+
 // Shared by every operation: make sure the server has the file, then turn the
 // model's 1-based position into the params every textDocument/* request starts with.
 async function prepare(client: LSPClient, input: LSPToolInput) {

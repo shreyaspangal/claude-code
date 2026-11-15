@@ -2,7 +2,7 @@
 
 How the program runs right now. Update this file in the same change as any code that alters the flow.
 
-_Last updated: 2026-11-14 (LSP edit sync: Write sends didOpen/didChange, shared version map)_
+_Last updated: 2026-11-16 (LSP diagnostics: new current issues appended to the latest tool result)_
 
 ## Runtime sequence
 
@@ -48,6 +48,10 @@ sequenceDiagram
                 LSP-->>Main: textDocument/references → Location[] → "Found N references across M files:" grouped by file, or "No references found"
             end
             Note over Main: result (or "Error: <message>" if it threw), pushed as a "tool" message
+            opt lspClient set
+                Main->>LSP: collectDiagnostics: notifications {after: cursor, timeoutMs: 0} → new cursor + queued notifications
+                Note over Main,LSP: publishDiagnostics only; keep current reports (no version, or version = last sent), latest per file wins<br/>issues not in that file's last shown set → "<new-diagnostics>…</new-diagnostics>" appended to the last tool message
+            end
         end
     end
     Main-->>User: print runAgent's answer
@@ -81,6 +85,7 @@ flowchart TD
   - `goToDefinition` → `textDocument/definition` → `Defined in <path>:<line>:<char>`.
   - `findReferences` → `textDocument/references` with `context.includeDeclaration: true` → `Found N references across M files:`, then one block per file (in server order) with a `  Line <line>:<char>` row per location. Two hits on one line stay separate rows. `[]` or `null` → `No references found`. Unconfigured, the tool isn't offered and nothing else changes.
 - LSP edit sync: after `write` saves a file (the save throws on failure, so the server never hears about unsaved text), `syncWrite` sends the complete saved text, awaited before the tool result. Open URI → `textDocument/didChange` with the previous version + 1 and one full-text change (no range). Not yet open → `didOpen` at version 1 with the new text. Extensions not in `extensionToLanguage` are skipped. `read` and returned locations never open documents. The `write` description tells the model to use it for every edit.
+- LSP diagnostics: after each turn's tool calls, and before the next model request, `runAgent` awaits `collectDiagnostics` (`app/tools/lsp.ts`). It reads the client's notification queue from a cursor that starts at 0 and is always replaced by the returned one, even for empty or unrelated batches. Only `textDocument/publishDiagnostics` counts. A report is current if it has no version or its version equals the last one sent for that file (the shared version map). Other reports are stale and ignored. The latest current report per file replaces that file's last shown set of issues, and an empty array clears it. Only issues not already in that set (`[Line L:C] message`, 1-based) are reported, grouped by relative path inside `<new-diagnostics>`, with a note telling the model to fix them, including in files it didn't edit. They're appended to the latest tool result, so Write's own result stays `File written successfully`. Any file counts, not just the one last written.
 - Real Claude Code stacks skills only at the interactive prompt. In `-p` mode it expands just the first. We stack in `-p` on purpose.
 
 ## Known gaps / next up
@@ -109,6 +114,9 @@ Compared with the [Claude Code skills docs](https://code.claude.com/docs/en/skil
 - [x] ~~LSP: edited files are never re-synced (`didChange`).~~ Done: `syncWrite` after every `write`.
 - [ ] LSP: edits made through `bash` (e.g. `sed -i`) aren't synced. Only `write` is.
 - [ ] LSP: files are never closed (`didClose`), and nothing handles `didSave`.
+- [x] ~~LSP diagnostics~~ Done: `collectDiagnostics` before each model request.
+- [ ] LSP diagnostics: reports that arrive after the model's final answer (no more tool calls) are never shown. A last-chance wait (`timeoutMs` > 0) before finishing could catch them.
+- [ ] LSP diagnostics: severity, `source` and `code` aren't shown. Only position and message are.
 
 Refactor queue (simplify without adding new ideas):
 
