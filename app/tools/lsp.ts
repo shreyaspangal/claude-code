@@ -27,18 +27,48 @@ function toRelativePath(uri: string): string {
     return path.relative(process.cwd(), fileURLToPath(uri));
 }
 
-// The server remembers opened documents for the whole connection
-// and rejects a second didOpen, so track which URIs it already has.
-const openedUris = new Set<string>();
+// The server remembers opened documents for the whole connection and rejects a
+// second didOpen. Track each open URI with the version the server last received.
+// Navigation and Write share this map, so they always agree on open state and version.
+const versions = new Map<string, number>();
+
+function languageOf(client: LSPClient, filePath: string): string | undefined {
+    return client.extensionToLanguage[path.extname(filePath)];
+}
+
+// First time the server sees this URI: send the full text as version 1.
+async function open(client: LSPClient, uri: string, languageId: string, text: string): Promise<void> {
+    await client.notify("textDocument/didOpen", {
+        textDocument: { uri, languageId, version: 1, text },
+    });
+    versions.set(uri, 1); // only after notify succeeded: a failed didOpen doesn't count as open
+}
 
 async function ensureOpen(client: LSPClient, filePath: string, uri: string): Promise<void> {
-    if (openedUris.has(uri)) return;
-    const languageId = client.extensionToLanguage[path.extname(filePath)];
+    if (versions.has(uri)) return;
+    const languageId = languageOf(client, filePath);
     if (!languageId) throw new Error(`no language configured for ${filePath}`);
-    await client.notify("textDocument/didOpen", {
-        textDocument: { uri, languageId, version: 1, text: fs.readFileSync(filePath, "utf-8") },
-    });
-    openedUris.add(uri); // only after notify succeeded: a failed didOpen doesn't count as open
+    await open(client, uri, languageId, fs.readFileSync(filePath, "utf-8"));
+}
+
+// Called after a successful Write, so later lookups see the saved text.
+// Open → didChange with version + 1 and the whole text (full sync: one change, no range).
+// Not open → didOpen at version 1 with the new text. Unmapped extensions are left alone.
+export async function syncWrite(client: LSPClient, filePath: string, text: string): Promise<void> {
+    const languageId = languageOf(client, filePath);
+    if (!languageId) return;
+    const uri = toUri(filePath);
+    const current = versions.get(uri);
+    if (current === undefined) {
+        await open(client, uri, languageId, text);
+    } else {
+        const version = current + 1;
+        await client.notify("textDocument/didChange", {
+            textDocument: { uri, version },
+            contentChanges: [{ text }],
+        });
+        versions.set(uri, version); // advance only after the server has it
+    }
 }
 
 // Shared by every operation: make sure the server has the file, then turn the

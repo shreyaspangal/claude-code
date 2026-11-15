@@ -24,7 +24,7 @@ const tools = [
         "type": "function",
         "function": {
             "name": "write",
-            "description": "Write content to a file",
+            "description": "Write content to a file, replacing it. Use this for every file edit: it also keeps the language server's copy in sync, so later LSP lookups see the change.",
             "parameters": {
                 "type": "object",
                 "required": ["file_path", "content"],

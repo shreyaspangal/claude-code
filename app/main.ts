@@ -3,7 +3,7 @@ import { tools, lspTool, read_file, write_file, bash } from "./tools";
 import type { BashToolInput, ClientLoopParams, LSPToolInput, ReadToolInput, SkillToolInput, WriteToolInput } from "./types";
 import { expandPrompt, initializeSkills, loadSkill } from "./utils/skills";
 import { LSPClient } from "./lsp_client";
-import { goToDefinition, findReferences } from "./tools/lsp";
+import { goToDefinition, findReferences, syncWrite } from "./tools/lsp";
 
 // Set once in main() before the first model request; null when CODECRAFTERS_LSP_URL is unset.
 // Kept for the whole run so the LSP tool handler can reach the server.
@@ -107,7 +107,8 @@ async function executeTool(client: OpenAI, toolCall: OpenAI.ChatCompletionMessag
       const { file_path, content } = args as WriteToolInput;
       if (!file_path) throw new Error("no file_path in function call arguments");
       if (content === undefined) throw new Error("no content in function call arguments"); // "" is a valid (empty) file
-      write_file(file_path, content);
+      write_file(file_path, content); // throws on failure, so the server is only told about saved text
+      if (lspClient) await syncWrite(lspClient, file_path, content); // awaited: lookups after this see the edit
       return "File written successfully";
     }
     case "bash": {
