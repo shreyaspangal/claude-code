@@ -75,6 +75,16 @@ export async function syncWrite(client: LSPClient, filePath: string, text: strin
 interface Diagnostic {
     range: { start: Position; end: Position };
     message: string;
+    severity?: number; // 1 error, 2 warning, 3 information, 4 hint; optional in the spec
+    source?: string; // e.g. "pyright"
+}
+
+const SEVERITY = ["", "error", "warning", "info", "hint"];
+
+// One issue as the model sees it, 1-based. Also the key for "already shown?".
+function formatIssue({ range, message, severity, source }: Diagnostic): string {
+    const label = [severity && SEVERITY[severity], source].filter(Boolean).join(" ");
+    return `[Line ${range.start.line + 1}:${range.start.character + 1}]${label ? ` ${label}:` : ""} ${message}`;
 }
 
 interface Notification {
@@ -109,8 +119,7 @@ export async function collectDiagnostics(client: LSPClient): Promise<string | nu
     const byFile = new Map<string, string[]>();
     for (const [uri, diagnostics] of latest) {
         const previous = shown.get(uri) ?? new Set<string>();
-        const current = new Set(diagnostics.map(({ range, message }) =>
-            `[Line ${range.start.line + 1}:${range.start.character + 1}] ${message}`));
+        const current = new Set(diagnostics.map(formatIssue));
         const fresh = [...current].filter((issue) => !previous.has(issue));
         if (fresh.length > 0) byFile.set(toRelativePath(uri), fresh);
         shown.set(uri, current);
